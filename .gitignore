@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output and reports
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Environment files (real values never go in Git; keep the examples)
+.env
+.env.*
+!.env.example
+
+# Keys and certificates
+*.pem
+*.key
+
+# Python (backend)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local databases and data
+*.sqlite3
+*.db
+pgdata/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
