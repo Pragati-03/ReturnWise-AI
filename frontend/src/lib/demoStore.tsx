@@ -166,7 +166,14 @@ export interface DemoStore {
   policy: ReturnPolicy;
   auditLog: AuditEntry[];
   metrics: DashboardMetrics;
-
+    /** "demo" = in-memory sample data, "api" = the real backend. Pages adjust wording by it. */
+  mode: "demo" | "api";
+  /** The clock pages use for relative dates and return-window math. */
+  now: Date;
+  /** False until the PayPal phase: hides refund actions that have no backend yet. */
+  refundsAvailable: boolean;
+  
+  
   getOrder: (orderId: string) => Order | null;
   getReturn: (returnId: string) => ReturnRequest | null;
   getEvaluation: (returnId: string) => PolicyEvaluation | null;
@@ -182,7 +189,7 @@ export interface DemoStore {
   resetDemo: () => void;
 }
 
-const DemoStoreContext = createContext<DemoStore | null>(null);
+export const DemoStoreContext = createContext<DemoStore | null>(null);
 
 export function DemoStoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(createInitialState);
@@ -389,6 +396,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       policy: state.policy,
       auditLog: state.audit,
       metrics,
+      mode: "demo",
+      now: new Date(DEMO_NOW_ISO),
+      refundsAvailable: true,
       getOrder: (id) => state.orders.find((item) => item.id === id) ?? null,
       getReturn: (id) => state.returns.find((item) => item.id === id) ?? null,
       getEvaluation: (id) => state.evaluations[id] ?? null,

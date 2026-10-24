@@ -1,11 +1,9 @@
 import type {
-  AiAnalysis,
   AuditEntry,
   DashboardMetrics,
   MoneyString,
   Order,
   PolicyEvaluation,
-  RefundRecord,
   ReturnLineItem,
   ReturnPolicy,
   ReturnRequest,
@@ -21,7 +19,6 @@ export const isApiConfigured = API_BASE_URL !== "";
 
 const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 15_000;
 
-/** Planned URL prefix. Adjust when the backend routes are finalized. */
 const PREFIX = "/api/v1";
 
 /* ---------- Errors ---------- */
@@ -55,39 +52,57 @@ function codeForStatus(status: number): string {
   return "http_error";
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
-  // Don't surface server internals to the user.
-  if (response.status >= 500) return "The server ran into a problem. Please try again later.";
-
-  try {
-    const body: unknown = await response.json();
-    const detail = (body as { detail?: unknown } | null)?.detail;
-
-    if (typeof detail === "string" && detail.trim() !== "") return detail;
-    if (Array.isArray(detail)) {
-      const messages = detail
-        .map((item) => (item as { msg?: unknown } | null)?.msg)
-        .filter((msg): msg is string => typeof msg === "string");
-      if (messages.length > 0) return messages.join(" ");
-    }
-  } catch {
-    // Non-JSON error body: fall through to the generic message.
-  }
-  return `Request failed (${response.status}).`;
+interface ErrorBody {
+  message: string;
+  code: string | null;
 }
 
-/* ---------- Auth hook ---------- */
+/** Turns the backend's {detail, code} error body into text that is safe to show. */
+async function readError(response: Response): Promise<ErrorBody> {
+  // Never surface server internals.
+  if (response.status >= 500) {
+    return { message: "The server ran into a problem. Please try again later.", code: null };
+  }
+
+  const fallback = `Request failed (${response.status}).`;
+  try {
+    const body = (await response.json()) as { detail?: unknown; code?: unknown } | null;
+    const code = typeof body?.code === "string" ? body.code : null;
+    const detail = body?.detail;
+
+    if (typeof detail === "string" && detail.trim() !== "") return { message: detail, code };
+
+    if (Array.isArray(detail)) {
+      const messages = detail.flatMap((item) => {
+        const problem = item as { loc?: unknown; msg?: unknown } | null;
+        if (typeof problem?.msg !== "string") return [];
+        const field = Array.isArray(problem.loc) ? problem.loc[problem.loc.length - 1] : undefined;
+        return [typeof field === "string" && field !== "body" ? `${field}: ${problem.msg}` : problem.msg];
+      });
+      if (messages.length > 0) return { message: messages.join(" "), code };
+    }
+    return { message: fallback, code };
+  } catch {
+    return { message: fallback, code: null };
+  }
+}
+
+/* ---------- Auth hooks ---------- */
 
 type TokenProvider = () => string | null;
 
 let getAuthToken: TokenProvider = () => null;
 
-/**
- * Registered by the auth layer once the backend has seller login (Phase 3).
- * Keep tokens in memory; don't store them in localStorage.
- */
+/** Registered by the auth layer. Tokens live in memory only, never in localStorage. */
 export function setAuthTokenProvider(provider: TokenProvider): void {
   getAuthToken = provider;
+}
+
+let onUnauthorized: (() => void) | null = null;
+
+/** Called when an authenticated request gets a 401, so the app can return to the login page. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
 }
 
 /* ---------- Core request ---------- */
@@ -98,10 +113,12 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   query?: Record<string, QueryValue>;
   body?: unknown;
-  /** Sent as the Idempotency-Key header (used for refund creation). */
+  /** Sent as the Idempotency-Key header (refund creation, Phase 5). */
   idempotencyKey?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Login and register: no token is sent, and a 401 is just a wrong password. */
+  public?: boolean;
 }
 
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -117,8 +134,8 @@ function buildUrl(path: string, query?: Record<string, QueryValue>): string {
 }
 
 /**
- * Responses are cast to T without runtime validation, so they are only as
- * trustworthy as the backend. The backend validates its own output with Pydantic.
+ * Responses are cast to T without runtime validation, so they are only as trustworthy as
+ * the backend. The backend validates its own output with Pydantic.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   if (!isApiConfigured) {
@@ -127,8 +144,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  const token = getAuthToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (!options.public) {
+    const token = getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
   if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
 
   const controller = new AbortController();
@@ -160,7 +179,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (!response.ok) {
-    throw new ApiError(await readErrorMessage(response), response.status, codeForStatus(response.status));
+    const error = await readError(response);
+    if (response.status === 401 && !options.public) onUnauthorized?.();
+    throw new ApiError(error.message, response.status, error.code ?? codeForStatus(response.status));
   }
   if (response.status === 204) return undefined as T;
 
@@ -171,15 +192,23 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 }
 
-/* ---------- Planned endpoints ---------- */
-
-/**
- * The route shapes below are the PLANNED contract. The backend does not exist
- * yet, so adjust paths and payloads to the real schemas in Phase 3.
- */
+/* ---------- Endpoints ---------- */
 
 interface ReadOptions {
   signal?: AbortSignal;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+export interface TokenResponse {
+  accessToken: string;
+  tokenType: "bearer";
+  /** Lifetime in seconds. */
+  expiresIn: number;
 }
 
 export interface CreateReturnPayload {
@@ -191,7 +220,26 @@ export interface CreateReturnPayload {
 
 const seg = encodeURIComponent;
 
+/**
+ * Only endpoints that exist on the backend are listed. The AI analysis (Phase 4) and refund
+ * (Phase 5) endpoints are added when those phases land.
+ */
 export const api = {
+  // Account
+  login: (email: string, password: string) =>
+    request<TokenResponse>(`${PREFIX}/auth/login`, {
+      method: "POST",
+      body: { email, password },
+      public: true,
+    }),
+  register: (email: string, password: string, displayName: string) =>
+    request<AuthUser>(`${PREFIX}/auth/register`, {
+      method: "POST",
+      body: { email, password, displayName },
+      public: true,
+    }),
+  me: (opts?: ReadOptions) => request<AuthUser>(`${PREFIX}/auth/me`, opts),
+
   // Orders
   listOrders: (opts?: ReadOptions) => request<Order[]>(`${PREFIX}/orders`, opts),
   getOrder: (orderId: string, opts?: ReadOptions) =>
@@ -204,14 +252,8 @@ export const api = {
     request<ReturnRequest>(`${PREFIX}/returns/${seg(returnId)}`, opts),
   createReturn: (payload: CreateReturnPayload) =>
     request<ReturnRequest>(`${PREFIX}/returns`, { method: "POST", body: payload }),
-
-  // Per-return details
   getEvaluation: (returnId: string, opts?: ReadOptions) =>
     request<PolicyEvaluation>(`${PREFIX}/returns/${seg(returnId)}/evaluation`, opts),
-  getAnalysis: (returnId: string, opts?: ReadOptions) =>
-    request<AiAnalysis>(`${PREFIX}/returns/${seg(returnId)}/analysis`, opts),
-  getRefund: (returnId: string, opts?: ReadOptions) =>
-    request<RefundRecord>(`${PREFIX}/returns/${seg(returnId)}/refund`, opts),
 
   // Seller decisions
   startReview: (returnId: string) =>
@@ -226,21 +268,13 @@ export const api = {
       method: "POST",
       body: { note },
     }),
-  /**
-   * Reuse the same idempotencyKey when retrying one attempt (for example after a
-   * timeout) so the backend can never issue the refund twice.
-   */
-  initiateRefund: (returnId: string, idempotencyKey: string = crypto.randomUUID()) =>
-    request<RefundRecord>(`${PREFIX}/returns/${seg(returnId)}/refund`, {
-      method: "POST",
-      idempotencyKey,
-    }),
 
   // Audit, policy and dashboard
-  listAudit: (query?: { returnId?: string }, opts?: ReadOptions) =>
+  listAudit: (query?: { returnId?: string; limit?: number }, opts?: ReadOptions) =>
     request<AuditEntry[]>(`${PREFIX}/audit`, { query, ...opts }),
   getPolicy: (opts?: ReadOptions) => request<ReturnPolicy>(`${PREFIX}/policy`, opts),
   updatePolicy: (policy: ReturnPolicy) =>
     request<ReturnPolicy>(`${PREFIX}/policy`, { method: "PUT", body: policy }),
-  getMetrics: (opts?: ReadOptions) => request<DashboardMetrics>(`${PREFIX}/dashboard/metrics`, opts),
+  getMetrics: (opts?: ReadOptions) =>
+    request<DashboardMetrics>(`${PREFIX}/dashboard/metrics`, opts),
 };

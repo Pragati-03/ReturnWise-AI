@@ -110,7 +110,9 @@ export type PolicyReasonCode =
   | "AMOUNT_WITHIN_REFUNDABLE"
   | "AMOUNT_EXCEEDS_REFUNDABLE"
   | "NO_DUPLICATE_REQUEST"
-  | "DUPLICATE_REQUEST";
+  | "DUPLICATE_REQUEST"
+  | "ORDER_NOT_DELIVERED"
+  | "PARTIAL_REFUND_NOT_ALLOWED";
 
 export interface PolicyCheck {
   code: PolicyReasonCode;
