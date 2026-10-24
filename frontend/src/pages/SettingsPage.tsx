@@ -54,7 +54,8 @@ function validate(form: PolicyForm): FormErrors {
 }
 
 export function SettingsPage() {
-  const { policy, updatePolicy, resetDemo } = useDemoStore();
+  const { policy, updatePolicy, resetDemo, mode } = useDemoStore();
+  const demo = mode === "demo";
 
   const [form, setForm] = useState<PolicyForm>(() => toForm(policy));
   const [errors, setErrors] = useState<FormErrors>({});
@@ -63,11 +64,14 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
 
-  // Re-sync the form whenever the saved policy changes (after saving or a demo reset).
+  // Re-sync the form when the saved policy's CONTENT changes (after saving or a demo reset).
+  // Comparing content, not object identity, stops a background refresh from wiping edits
+  // the user has not saved yet.
+  const savedKey = JSON.stringify(policy);
   useEffect(() => {
     setForm(toForm(policy));
     setErrors({});
-  }, [policy]);
+  }, [savedKey]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(toForm(policy));
 
@@ -123,7 +127,11 @@ export function SettingsPage() {
 
       <Card
         title="Return policy"
-        description="Demo mode: saving updates these settings and the audit log only. Demo eligibility results are fixed sample data and are not re-evaluated. The real policy engine arrives with the backend."
+        description={
+          demo
+            ? "Demo mode: saving updates these settings and the audit log only. Demo eligibility results are fixed sample data and are not re-evaluated. The real policy engine arrives with the backend."
+            : "Applies to new return requests. Existing requests keep the result they were checked with."
+        }
       >
         <form onSubmit={handleSubmit} noValidate className="max-w-xl space-y-5">
           <Input
@@ -144,7 +152,11 @@ export function SettingsPage() {
             value={form.manualReviewThreshold}
             onChange={(event) => update("manualReviewThreshold", event.target.value)}
             error={errors.manualReviewThreshold}
-            hint={`Amounts above this are flagged for manual review. Currency: ${policy.currency}.`}
+            hint={
+              demo
+                ? `Amounts above this are flagged for manual review. Currency: ${policy.currency}.`
+                : `Saved with your policy. Flagging large requests is not active yet. Currency: ${policy.currency}.`
+            }
           />
 
           <Input
@@ -157,7 +169,11 @@ export function SettingsPage() {
             value={form.restockingFeePercent}
             onChange={(event) => update("restockingFeePercent", event.target.value)}
             error={errors.restockingFeePercent}
-            hint="Saved for the future backend. It is not applied to demo refund amounts."
+            hint={
+              demo
+                ? "Saved for the future backend. It is not applied to demo refund amounts."
+                : "Reduces the most that can be refunded for returned items. Applies to new requests."
+            }
           />
 
           <div className="space-y-4">
@@ -203,14 +219,16 @@ export function SettingsPage() {
         </form>
       </Card>
 
-      <Card
-        title="Demo data"
-        description="Everything in this demo lives in memory only, so a page refresh also resets it."
-      >
-        <Button variant="danger" onClick={() => setResetOpen(true)}>
-          Reset demo data
-        </Button>
-      </Card>
+      {demo && (
+        <Card
+          title="Demo data"
+          description="Everything in this demo lives in memory only, so a page refresh also resets it."
+        >
+          <Button variant="danger" onClick={() => setResetOpen(true)}>
+            Reset demo data
+          </Button>
+        </Card>
+      )}
 
       <ConfirmDialog
         open={resetOpen}

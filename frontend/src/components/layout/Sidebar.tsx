@@ -8,6 +8,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { useDemoStore } from "@/lib/demoStore";
+
 interface NavItem {
   to: string;
   label: string;
@@ -24,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
+/** The logo. It doesn't touch the store, so the login page can use it too. */
 export function Brand() {
   return (
     <div className="flex items-center gap-2.5">
@@ -44,6 +47,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onNavigate }: SidebarProps) {
+  const { mode } = useDemoStore();
+
   return (
     <div className="flex h-full flex-col border-r border-slate-200 bg-white">
       <div className="flex h-14 shrink-0 items-center px-5">
@@ -75,8 +80,19 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       </nav>
 
       <div className="shrink-0 border-t border-slate-200 p-4">
-        <p className="text-xs font-medium text-slate-700">Demo mode</p>
-        <p className="mt-0.5 text-xs text-slate-500">Sample data only. PayPal Sandbox only.</p>
+        {mode === "demo" ? (
+          <>
+            <p className="text-xs font-medium text-slate-700">Demo mode</p>
+            <p className="mt-0.5 text-xs text-slate-500">Sample data only. PayPal Sandbox only.</p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-medium text-slate-700">Connected to your account</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Refunds and AI analysis are not connected yet.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

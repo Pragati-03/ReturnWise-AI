@@ -4,12 +4,17 @@ import { Menu, X } from "lucide-react";
 
 import { DemoBanner } from "@/components/shared/StateViews";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { useOptionalAuth } from "@/lib/auth";
+import { useDemoStore } from "@/lib/demoStore";
 
 import { Brand, Sidebar } from "./Sidebar";
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function AppLayout() {
+  const { mode } = useDemoStore();
+  const auth = useOptionalAuth(); // null in plain demo mode, where no login exists
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -110,10 +115,25 @@ export function AppLayout() {
           <div className="lg:hidden">
             <Brand />
           </div>
-          <div className="ml-auto">
-            <Badge tone="warning" dot>
-              Demo mode
-            </Badge>
+
+          <div className="ml-auto flex items-center gap-2">
+            {mode === "demo" ? (
+              <Badge tone="warning" dot>
+                Demo mode
+              </Badge>
+            ) : (
+              auth && (
+                <>
+                  {/* The name is user-supplied text, rendered as plain text. */}
+                  <span className="hidden max-w-[12rem] truncate text-sm text-slate-600 sm:inline">
+                    {auth.user?.displayName}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={auth.signOut}>
+                    Sign out
+                  </Button>
+                </>
+              )
+            )}
           </div>
         </header>
 
@@ -122,7 +142,7 @@ export function AppLayout() {
           tabIndex={-1}
           className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 outline-none focus-visible:ring-0 sm:px-6 lg:px-8"
         >
-          <DemoBanner />
+          {mode === "demo" && <DemoBanner />}
           <Outlet />
         </main>
       </div>

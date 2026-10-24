@@ -20,8 +20,10 @@ interface DecisionPanelProps {
   onApprove: (note: string) => Promise<ActionResult>;
   onReject: (note: string) => Promise<ActionResult>;
   onInitiateRefund: () => Promise<ActionResult>;
-  /** Demo wording for refund actions. Phase 5 passes false for real sandbox refunds. */
+  /** Demo wording for refund actions. False when connected to the real backend. */
   demo?: boolean;
+  /** False until the PayPal phase: refund buttons are hidden and the panel explains why. */
+  refundsAvailable?: boolean;
 }
 
 const SUCCESS_MESSAGES: Record<DialogKind | "review", string> = {
@@ -40,6 +42,7 @@ export function DecisionPanel({
   onReject,
   onInitiateRefund,
   demo = true,
+  refundsAvailable = true,
 }: DecisionPanelProps) {
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [note, setNote] = useState("");
@@ -174,14 +177,18 @@ export function DecisionPanel({
         );
 
       case "approved":
-      case "refund_failed":
+      case "refund_failed": {
+        const message = !refundsAvailable
+          ? status === "approved"
+            ? "Approved. Refunds will be available when the PayPal integration is added."
+            : "The last refund attempt failed. Retrying will be available when the PayPal integration is added."
+          : status === "approved"
+            ? "Approved. Start the refund when you are ready."
+            : "The last refund attempt failed. You can retry it.";
+
         return (
           <>
-            <p className="text-sm text-slate-600">
-              {status === "approved"
-                ? "Approved. Start the refund when you are ready."
-                : "The last refund attempt failed. You can retry it."}
-            </p>
+            <p className="text-sm text-slate-600">{message}</p>
             {order && refundable !== null && (
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -202,16 +209,19 @@ export function DecisionPanel({
                 </div>
               </dl>
             )}
-            <Button
-              onClick={() => openDialog("refund")}
-              icon={status === "approved" ? <Banknote size={16} /> : <RotateCcw size={16} />}
-            >
-              {status === "approved"
-                ? demo ? "Start refund (demo)" : "Start refund"
-                : demo ? "Retry refund (demo)" : "Retry refund"}
-            </Button>
+            {refundsAvailable && (
+              <Button
+                onClick={() => openDialog("refund")}
+                icon={status === "approved" ? <Banknote size={16} /> : <RotateCcw size={16} />}
+              >
+                {status === "approved"
+                  ? demo ? "Start refund (demo)" : "Start refund"
+                  : demo ? "Retry refund (demo)" : "Retry refund"}
+              </Button>
+            )}
           </>
         );
+      }
 
       case "refund_pending":
         return (

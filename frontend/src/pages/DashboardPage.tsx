@@ -6,7 +6,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/shared/StateViews";
 import { Badge, ReturnStatusBadge } from "@/components/ui/Badge";
 import { Card, StatCard } from "@/components/ui/Card";
-import { DEMO_NOW_ISO } from "@/data/demoData";
 import { useDemoStore } from "@/lib/demoStore";
 import { formatMoney, formatRelativeTime } from "@/lib/format";
 import type { ReturnStatus } from "@/types";
@@ -24,10 +23,9 @@ const STATUS_ORDER: ReturnStatus[] = [
 /** Statuses where the seller still has something to do. */
 const ATTENTION_STATUSES: ReturnStatus[] = ["submitted", "under_review", "approved", "refund_failed"];
 
-const DEMO_NOW = new Date(DEMO_NOW_ISO);
-
 export function DashboardPage() {
-  const { metrics, returns, auditLog, getEvaluation } = useDemoStore();
+  const { metrics, returns, auditLog, getEvaluation, mode, now } = useDemoStore();
+  const demo = mode === "demo";
 
   const total = returns.length;
 
@@ -65,13 +63,13 @@ export function DashboardPage() {
         <StatCard
           label="Refunds pending"
           value={String(metrics.refundsPending)}
-          hint="Demo: nothing sent to PayPal"
+          hint={demo ? "Demo: nothing sent to PayPal" : "Waiting for PayPal to confirm"}
           icon={<Clock size={18} />}
         />
         <StatCard
           label="Refunded this month"
           value={formatMoney(metrics.refundedThisMonth, metrics.currency)}
-          hint="Demo data, not real transactions"
+          hint={demo ? "Demo data, not real transactions" : "Confirmed by PayPal"}
           icon={<Banknote size={18} />}
         />
         <StatCard
@@ -124,7 +122,7 @@ export function DashboardPage() {
                       {failsPolicy && <Badge tone="danger">Fails policy</Badge>}
                       <ReturnStatusBadge status={item.status} />
                       <span className="text-xs text-slate-400">
-                        {formatRelativeTime(item.submittedAt, DEMO_NOW)}
+                        {formatRelativeTime(item.submittedAt, now)}
                       </span>
                     </div>
                   </li>

@@ -10,7 +10,6 @@ import { EmptyState } from "@/components/shared/StateViews";
 import { Badge, PaymentStatusBadge, ReturnStatusBadge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/Table";
-import { DEMO_NOW_ISO } from "@/data/demoData";
 import { useDemoStore } from "@/lib/demoStore";
 import {
   formatDate,
@@ -21,8 +20,6 @@ import {
   returnWindowDaysLeft,
 } from "@/lib/format";
 import type { CurrencyCode } from "@/types";
-
-const DEMO_NOW = new Date(DEMO_NOW_ISO);
 
 interface ItemLine {
   id: string;
@@ -130,7 +127,7 @@ export function ReturnDetailPage() {
   });
 
   const windowLeft = order
-    ? returnWindowDaysLeft(order.deliveredAt, store.policy.returnWindowDays, DEMO_NOW)
+    ? returnWindowDaysLeft(order.deliveredAt, store.policy.returnWindowDays, store.now)
     : null;
 
   return (
@@ -242,6 +239,8 @@ export function ReturnDetailPage() {
             onApprove={(note) => store.approveReturn(request.id, note)}
             onReject={(note) => store.rejectReturn(request.id, note)}
             onInitiateRefund={() => store.initiateRefund(request.id)}
+            demo={store.mode === "demo"}
+            refundsAvailable={store.refundsAvailable}
           />
           <RefundTimeline record={refund} />
           <Card title="Audit history">
